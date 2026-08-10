@@ -52,9 +52,9 @@ export default function Home() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
-  const [fallback, setFallback] = useState(false);
+  const [resultSource, setResultSource] = useState<"live-api" | "dummy" | "">("");
   const [error, setError] = useState("");
-  const [loadingMessage, setLoadingMessage] = useState("Connecting to the job service...");
+  const [loadingMessage, setLoadingMessage] = useState("Connecting to the live job service...");
 
   useEffect(() => {
     if (localStorage.getItem("jobfinder_user")) setLogged(true);
@@ -64,38 +64,86 @@ export default function Home() {
   useEffect(() => {
     if (!loading) return;
     const messages = [
-      "Connecting to the job service...",
-      "Searching fresh job listings...",
-      "Normalizing job details...",
-      "Preparing your results...",
+      "Connecting to the live job service...",
+      "Searching fresh listings — this can take a few minutes...",
+      "The scraper is still working. Please keep this tab open...",
+      "Collecting and normalizing job details...",
+      "Almost there — waiting for the complete response...",
     ];
     let index = 0;
     setLoadingMessage(messages[0]);
     const timer = setInterval(() => {
       index = (index + 1) % messages.length;
       setLoadingMessage(messages[index]);
-    }, 2200);
+    }, 3500);
     return () => clearInterval(timer);
   }, [loading]);
 
   async function searchJobs(nextPage = 1) {
-    setLoading(true); setError(""); setPage(nextPage);
+    setLoading(true);
+    setError("");
+    setJobs([]);
+    setTotal(0);
+    setTotalPages(1);
+    setResultSource("");
+    setSearched(false);
+    setPage(nextPage);
+
     try {
       const response = await fetch("/api/jobs/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, page: nextPage, pageSize: 9 }),
       });
-      if (!response.ok) throw new Error(`Search failed (${response.status})`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Live API search failed (${response.status})`);
+      setJobs(Array.isArray(data.jobs) ? data.jobs : []);
+      setTotal(Number(data.total) || 0);
+      setTotalPages(Math.max(1, Number(data.totalPages) || 1));
+      setResultSource("live-api");
+      setSearched(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to search the live job API.");
+      setJobs([]);
+      setTotal(0);
+      setTotalPages(1);
+      setResultSource("live-api");
+      setSearched(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function dummySearch(nextPage = 1) {
+    setLoading(true);
+    setError("");
+    setJobs([]);
+    setTotal(0);
+    setTotalPages(1);
+    setResultSource("");
+    setSearched(false);
+    setPage(nextPage);
+
+    try {
+      const response = await fetch("/api/jobs/search?mode=dummy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, page: nextPage, pageSize: 9 }),
+      });
+      if (!response.ok) throw new Error(`Dummy search failed (${response.status})`);
       const data = await response.json();
       setJobs(Array.isArray(data.jobs) ? data.jobs : []);
       setTotal(Number(data.total) || 0);
       setTotalPages(Math.max(1, Number(data.totalPages) || 1));
-      setFallback(Boolean(data.fallback));
+      setResultSource("dummy");
       setSearched(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to search jobs.");
-      setJobs([]); setTotal(0); setTotalPages(1); setSearched(true);
+      setError(err instanceof Error ? err.message : "Unable to load dummy jobs.");
+      setJobs([]);
+      setTotal(0);
+      setTotalPages(1);
+      setResultSource("dummy");
+      setSearched(true);
     } finally {
       setLoading(false);
     }
@@ -144,7 +192,7 @@ export default function Home() {
           <button onClick={() => setView("profile")} className="grid h-9 w-9 place-items-center rounded-full border border-[var(--border)] bg-[var(--card)]"><UserRound size={17} /></button>
         </header>
         <div className="mx-auto max-w-7xl p-4 md:p-8">
-          {view === "home" && <SearchView form={form} update={update} jobs={jobs} total={total} totalPages={totalPages} page={page} loading={loading} searched={searched} fallback={fallback} error={error} loadingMessage={loadingMessage} searchJobs={searchJobs} />}
+          {view === "home" && <SearchView form={form} update={update} jobs={jobs} total={total} totalPages={totalPages} page={page} loading={loading} searched={searched} resultSource={resultSource} error={error} loadingMessage={loadingMessage} searchJobs={searchJobs} dummySearch={dummySearch} />}
           {view === "pricing" && <Pricing />}
           {view === "dashboard" && <Analytics />}
           {view === "profile" && <Profile />}
@@ -155,20 +203,21 @@ export default function Home() {
   );
 }
 
-function SearchView({ form, update, jobs, total, totalPages, page, loading, searched, fallback, error, loadingMessage, searchJobs }: {
+function SearchView({ form, update, jobs, total, totalPages, page, loading, searched, resultSource, error, loadingMessage, searchJobs, dummySearch }: {
   form: SearchForm; update: <K extends keyof SearchForm>(key: K, value: SearchForm[K]) => void;
   jobs: Job[]; total: number; totalPages: number; page: number; loading: boolean; searched: boolean;
-  fallback: boolean; error: string; loadingMessage: string; searchJobs: (page?: number) => void;
+  resultSource: "live-api" | "dummy" | ""; error: string; loadingMessage: string;
+  searchJobs: (page?: number) => void; dummySearch: (page?: number) => void;
 }) {
   const searchSummary = useMemo(() => `${form.job_title || "All jobs"} · ${form.location || "Any location"}`, [form.job_title, form.location]);
   return <section>
     <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-      <div><div className="mb-2 inline-flex items-center gap-2 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-500"><Sparkles size={14} /> Live job search</div><h1 className="text-3xl font-bold tracking-tight md:text-4xl">Find your next opportunity</h1><p className="mt-2 text-[var(--muted)]">Search Naukri now. The API is connected through a safe server-side proxy with automatic dummy fallback.</p></div>
+      <div><div className="mb-2 inline-flex items-center gap-2 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-500"><Sparkles size={14} /> Live job search</div><h1 className="text-3xl font-bold tracking-tight md:text-4xl">Find your next opportunity</h1><p className="mt-2 text-[var(--muted)]">Search the live job API when you need real results, or use Dummy Search for instant UI testing.</p></div>
       <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm"><div className="text-[var(--muted)]">Search allowance</div><div className="mt-1 font-semibold">50 searches <span className="font-normal text-[var(--muted)]">/ month</span></div></div>
     </div>
 
     <div className="card overflow-hidden p-4 shadow-sm md:p-6">
-      <div className="mb-5 flex items-center justify-between"><div><h2 className="font-semibold">Search jobs</h2><p className="text-xs text-[var(--muted)]">All fields are sent dynamically to the API.</p></div><div className="hidden items-center gap-2 text-xs text-[var(--muted)] sm:flex"><span className="h-2 w-2 rounded-full bg-emerald-500" /> API ready</div></div>
+      <div className="mb-5 flex items-center justify-between"><div><h2 className="font-semibold">Search jobs</h2><p className="text-xs text-[var(--muted)]">Every search field is sent dynamically to the selected platform API.</p></div><div className="hidden items-center gap-2 text-xs text-[var(--muted)] sm:flex"><span className="h-2 w-2 rounded-full bg-emerald-500" /> API ready</div></div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Field label="Platform"><select className="input" value={form.platform} onChange={(e) => update("platform", e.target.value)}><option value="naukri">Naukri</option><option value="linkedin">LinkedIn</option></select></Field>
         <Field label="Job title / keyword"><input className="input" value={form.job_title} onChange={(e) => update("job_title", e.target.value)} placeholder="React Developer" /></Field>
@@ -177,34 +226,37 @@ function SearchView({ form, update, jobs, total, totalPages, page, loading, sear
         <Field label="Work mode"><select className="input" value={form.work_mode} onChange={(e) => update("work_mode", e.target.value)}><option value="any">Any</option><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="work from office">Work from office</option></select></Field>
         <Field label="Posted within"><select className="input" value={form.posted_within} onChange={(e) => update("posted_within", e.target.value)}><option value="day">Last 24 hours</option><option value="3 days">Last 3 days</option><option value="week">Last 7 days</option><option value="15 days">Last 15 days</option><option value="month">Last 30 days</option></select></Field>
         <Field label="Easy Apply"><label className="flex h-[42px] cursor-pointer items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 text-sm"><span>{form.easy_apply ? "Only Easy Apply" : "Include all jobs"}</span><button type="button" onClick={() => update("easy_apply", !form.easy_apply)} className={`relative h-6 w-11 rounded-full transition ${form.easy_apply ? "bg-indigo-600" : "bg-black/10 dark:bg-white/10"}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition ${form.easy_apply ? "left-6" : "left-1"}`} /></button></label></Field>
-        <div className="flex items-end"><button onClick={() => searchJobs(1)} disabled={loading} className="flex h-[42px] w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60">{loading ? <LoaderCircle className="animate-spin" size={17} /> : <Search size={17} />}{loading ? "Searching..." : "Search jobs"}</button></div>
+        <div className="flex items-end gap-2">
+          <button onClick={() => searchJobs(1)} disabled={loading} className="flex h-[42px] flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"><Search size={17} />{loading ? "Searching..." : "Search API"}</button>
+          <button onClick={() => dummySearch(1)} disabled={loading} className="flex h-[42px] items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 text-sm font-semibold transition hover:bg-black/5 dark:hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-60"><Zap size={17} />Dummy</button>
+        </div>
       </div>
-      <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]"><span>Request:</span><code className="rounded-lg bg-[var(--bg)] px-2 py-1">POST /api/v1/jobs/search</code><span>·</span><span>{searchSummary}</span></div>
+      <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]"><span>Live request:</span><code className="rounded-lg bg-[var(--bg)] px-2 py-1">POST /api/v1/jobs/search</code><span>·</span><span>{searchSummary}</span><span>·</span><span>Live API waits up to 5 minutes</span></div>
     </div>
 
     {loading && <LoadingResults message={loadingMessage} />}
 
     {!loading && searched && <div className="mt-7">
-      {error ? <div className="card border-red-500/30 p-6"><div className="font-semibold text-red-500">Search failed</div><p className="mt-1 text-sm text-[var(--muted)]">{error}</p></div> : <>
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-3"><h2 className="text-lg font-semibold">{total} jobs found</h2>{fallback && <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-600">Demo fallback</span>}</div><p className="mt-1 text-sm text-[var(--muted)]">{searchSummary} · Page {page} of {totalPages}</p></div><span className="rounded-full bg-indigo-500/10 px-3 py-1 text-xs font-semibold capitalize text-indigo-500">{form.platform}</span></div>
+      {error ? <div className="card border-red-500/30 p-6"><div className="flex items-center gap-2 font-semibold text-red-500"><X size={18} /> Live search failed</div><p className="mt-1 text-sm text-[var(--muted)]">{error}</p><p className="mt-3 text-xs text-[var(--muted)]">No dummy data was substituted. Use <strong>Dummy</strong> when you want instant demo results.</p></div> : <>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-3"><h2 className="text-lg font-semibold">{total} jobs found</h2>{resultSource === "dummy" ? <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-600">Demo data</span> : <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-600">Live API</span>}</div><p className="mt-1 text-sm text-[var(--muted)]">{searchSummary} · Page {page} of {totalPages}</p></div><span className="rounded-full bg-indigo-500/10 px-3 py-1 text-xs font-semibold capitalize text-indigo-500">{form.platform}</span></div>
         {jobs.length === 0 ? <div className="card flex min-h-64 flex-col items-center justify-center p-8 text-center"><div className="grid h-14 w-14 place-items-center rounded-2xl bg-indigo-500/10 text-indigo-500"><Search /></div><h3 className="mt-4 font-semibold">No jobs found</h3><p className="mt-1 text-sm text-[var(--muted)]">Try a broader keyword, location, or experience range.</p></div> : <>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{jobs.map((job) => <JobCard key={job.id} job={job} />)}</div>
-          {totalPages > 1 && <div className="mt-7 flex items-center justify-center gap-2"><button disabled={page === 1} onClick={() => searchJobs(page - 1)} className="rounded-xl border border-[var(--border)] p-2 disabled:opacity-30"><ChevronLeft size={18} /></button>{Array.from({ length: totalPages }, (_, i) => i + 1).slice(Math.max(0, page - 3), Math.min(totalPages, page + 2)).map((n) => <button key={n} onClick={() => searchJobs(n)} className={`h-9 min-w-9 rounded-xl px-2 text-sm ${n === page ? "bg-indigo-600 text-white" : "border border-[var(--border)] hover:bg-black/5 dark:hover:bg-white/5"}`}>{n}</button>)}<button disabled={page === totalPages} onClick={() => searchJobs(page + 1)} className="rounded-xl border border-[var(--border)] p-2 disabled:opacity-30"><ChevronRight size={18} /></button></div>}
+          {totalPages > 1 && <div className="mt-7 flex items-center justify-center gap-2"><button disabled={page === 1 || loading} onClick={() => resultSource === "dummy" ? dummySearch(page - 1) : searchJobs(page - 1)} className="rounded-xl border border-[var(--border)] p-2 disabled:opacity-30"><ChevronLeft size={18} /></button>{Array.from({ length: totalPages }, (_, i) => i + 1).slice(Math.max(0, page - 3), Math.min(totalPages, page + 2)).map((n) => <button key={n} onClick={() => resultSource === "dummy" ? dummySearch(n) : searchJobs(n)} className={`h-9 min-w-9 rounded-xl px-2 text-sm ${n === page ? "bg-indigo-600 text-white" : "border border-[var(--border)] hover:bg-black/5 dark:hover:bg-white/5"}`}>{n}</button>)}<button disabled={page === totalPages || loading} onClick={() => resultSource === "dummy" ? dummySearch(page + 1) : searchJobs(page + 1)} className="rounded-xl border border-[var(--border)] p-2 disabled:opacity-30"><ChevronRight size={18} /></button></div>}
         </>}
       </>}
     </div>}
 
-    {!searched && !loading && <div className="card mt-7 flex min-h-80 flex-col items-center justify-center p-8 text-center"><div className="mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-indigo-500/10 text-indigo-500"><Zap size={28} /></div><h2 className="text-xl font-semibold">Ready when you are</h2><p className="mt-2 max-w-lg text-sm leading-6 text-[var(--muted)]">Enter your search criteria above. JobFinder will call your local Naukri API, normalize the response, and automatically switch to polished demo results if the service is unavailable.</p></div>}
+    {!searched && !loading && <div className="card mt-7 flex min-h-80 flex-col items-center justify-center p-8 text-center"><div className="mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-indigo-500/10 text-indigo-500"><Zap size={28} /></div><h2 className="text-xl font-semibold">Ready when you are</h2><p className="mt-2 max-w-lg text-sm leading-6 text-[var(--muted)]">Search API waits for the complete live response, even if your LinkedIn or Naukri scraper takes several minutes. Dummy gives you instant local demo data without calling the live API.</p></div>}
   </section>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block text-sm"><span className="mb-1.5 block text-xs font-medium text-[var(--muted)]">{label}</span>{children}</label>; }
 
-function LoadingResults({ message }: { message: string }) { return <div className="mt-7"><div className="mb-4 flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-xl bg-indigo-500/10 text-indigo-500"><LoaderCircle className="animate-spin" size={18} /></div><div><div className="font-semibold">Searching live results</div><div className="text-xs text-[var(--muted)]">{message}</div></div></div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} delay={i} />)}</div></div>; }
+function LoadingResults({ message }: { message: string }) { return <div className="mt-7"><div className="mb-4 flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-xl bg-indigo-500/10 text-indigo-500"><LoaderCircle className="animate-spin" size={18} /></div><div><div className="font-semibold">Waiting for complete live results</div><div className="text-xs text-[var(--muted)]">{message}</div></div><span className="ml-auto hidden rounded-full bg-indigo-500/10 px-3 py-1 text-xs font-medium text-indigo-500 sm:inline-flex">Up to 5 min</span></div><div className="card mb-4 overflow-hidden p-4"><div className="flex items-center gap-3"><div className="h-2 flex-1 overflow-hidden rounded-full bg-black/5 dark:bg-white/5"><div className="h-full w-1/3 animate-pulse rounded-full bg-indigo-500" /></div><span className="text-xs text-[var(--muted)]">Live scraper running</span></div></div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} delay={i} />)}</div></div>; }
 
 function SkeletonCard({ delay }: { delay: number }) { return <div className="card overflow-hidden p-5" style={{ animationDelay: `${delay * 100}ms` }}><div className="flex items-start justify-between gap-3"><div className="flex flex-1 gap-3"><div className="h-11 w-11 shrink-0 animate-pulse rounded-xl bg-black/10 dark:bg-white/10" /><div className="flex-1"><div className="h-4 w-4/5 animate-pulse rounded bg-black/10 dark:bg-white/10" /><div className="mt-2 h-3 w-2/5 animate-pulse rounded bg-black/10 dark:bg-white/10" /></div></div><div className="h-6 w-14 animate-pulse rounded-full bg-black/10 dark:bg-white/10" /></div><div className="mt-6 space-y-3"><div className="h-3 w-4/5 animate-pulse rounded bg-black/10 dark:bg-white/10" /><div className="h-3 w-3/5 animate-pulse rounded bg-black/10 dark:bg-white/10" /><div className="h-3 w-2/3 animate-pulse rounded bg-black/10 dark:bg-white/10" /></div><div className="mt-5 flex gap-2"><div className="h-6 w-16 animate-pulse rounded-full bg-black/10 dark:bg-white/10" /><div className="h-6 w-20 animate-pulse rounded-full bg-black/10 dark:bg-white/10" /><div className="h-6 w-14 animate-pulse rounded-full bg-black/10 dark:bg-white/10" /></div><div className="mt-5 h-10 w-full animate-pulse rounded-xl bg-black/10 dark:bg-white/10" /></div>; }
 
-function JobCard({ job }: { job: Job }) { return <article className="card group flex flex-col p-5 transition duration-200 hover:-translate-y-1 hover:shadow-xl"><div className="flex items-start justify-between gap-3"><div className="flex min-w-0 gap-3"><div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-indigo-500/10 text-sm font-bold text-indigo-500">{job.company_logo ? <img src={job.company_logo} alt="" className="h-full w-full object-cover" /> : job.company.slice(0, 2).toUpperCase()}</div><div className="min-w-0"><h3 className="line-clamp-2 font-semibold leading-5">{job.title}</h3><p className="mt-1 truncate text-sm text-[var(--muted)]">{job.company}</p></div></div><span className="shrink-0 rounded-full bg-indigo-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase text-indigo-500">{job.platform}</span></div><div className="mt-5 space-y-2 text-sm text-[var(--muted)]"><div className="flex gap-2"><MapPin size={16} className="mt-0.5 shrink-0" />{job.location}</div><div className="flex gap-2"><BriefcaseBusiness size={16} className="mt-0.5 shrink-0" />{job.experience} · {formatWorkMode(job.work_mode)}</div><div className="flex gap-2"><CreditCard size={16} className="mt-0.5 shrink-0" />{job.salary}</div><div className="flex gap-2"><Zap size={16} className="mt-0.5 shrink-0" />{job.posted}{job.easy_apply ? " · Easy Apply" : ""}</div></div>{job.description && <p className="mt-4 line-clamp-2 text-xs leading-5 text-[var(--muted)]">{job.description}</p>}<div className="mt-4 flex min-h-6 flex-wrap gap-1.5">{job.skills.map((skill) => <span key={skill} className="rounded-full border border-[var(--border)] px-2 py-1 text-[11px]">{skill}</span>)}</div><a href={job.job_url || job.apply_url || "https://www.naukri.com/"} target="_blank" rel="noreferrer" className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--card)] transition hover:opacity-90">View on Naukri <ExternalLink size={15} /></a></article>; }
+function JobCard({ job }: { job: Job }) { const isLinkedIn = job.platform.toLowerCase() === "linkedin"; return <article className="card group flex flex-col p-5 transition duration-200 hover:-translate-y-1 hover:shadow-xl"><div className="flex items-start justify-between gap-3"><div className="flex min-w-0 gap-3"><div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-indigo-500/10 text-sm font-bold text-indigo-500">{job.company_logo && !job.company_logo.startsWith("data:image/gif") ? <img src={job.company_logo} alt="" className="h-full w-full object-cover" /> : job.company.slice(0, 2).toUpperCase()}</div><div className="min-w-0"><h3 className="line-clamp-2 font-semibold leading-5">{job.title}</h3><p className="mt-1 truncate text-sm text-[var(--muted)]">{job.company}</p></div></div><span className="shrink-0 rounded-full bg-indigo-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase text-indigo-500">{job.platform}</span></div><div className="mt-5 space-y-2 text-sm text-[var(--muted)]"><div className="flex gap-2"><MapPin size={16} className="mt-0.5 shrink-0" />{job.location}</div><div className="flex gap-2"><BriefcaseBusiness size={16} className="mt-0.5 shrink-0" />{job.experience} · {formatWorkMode(job.work_mode)}</div><div className="flex gap-2"><CreditCard size={16} className="mt-0.5 shrink-0" />{job.salary}</div><div className="flex gap-2"><Zap size={16} className="mt-0.5 shrink-0" />{job.posted}{job.easy_apply ? " · Easy Apply" : ""}</div></div>{job.description && <p className="mt-4 line-clamp-2 text-xs leading-5 text-[var(--muted)]">{job.description}</p>}<div className="mt-4 flex min-h-6 flex-wrap gap-1.5">{job.skills.map((skill) => <span key={skill} className="rounded-full border border-[var(--border)] px-2 py-1 text-[11px]">{skill}</span>)}</div><a href={job.job_url || job.apply_url || (isLinkedIn ? "https://www.linkedin.com/jobs/" : "https://www.naukri.com/")} target="_blank" rel="noreferrer" className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--card)] transition hover:opacity-90">View on {isLinkedIn ? "LinkedIn" : "Naukri"} <ExternalLink size={15} /></a></article>; }
 
 function Pricing() { return <section><div className="mb-8"><h1 className="text-3xl font-bold">Pricing</h1><p className="mt-1 text-[var(--muted)]">Simple monthly plans based on search usage.</p></div><div className="grid gap-5 lg:grid-cols-5">{plans.map((plan, i) => <div key={plan.name} className={`card relative flex flex-col p-5 ${i === 2 ? "ring-2 ring-indigo-500" : ""}`}>{i === 2 && <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-indigo-600 px-3 py-1 text-xs font-semibold text-white">Popular</span>}<h2 className="font-semibold">{plan.name}</h2><p className="mt-2 min-h-10 text-sm text-[var(--muted)]">{plan.description}</p><div className="mt-5"><span className="text-3xl font-bold">₹{plan.price}</span><span className="text-sm text-[var(--muted)]"> / month</span></div><div className="mt-4 flex items-center gap-2 text-sm"><Check size={16} className="text-emerald-500" />{plan.searches.toLocaleString()} searches</div><button className="mt-6 rounded-xl border border-[var(--border)] px-4 py-2.5 text-sm font-semibold">{plan.price === 0 ? "Current free plan" : "Choose plan"}</button></div>)}</div></section>; }
 
