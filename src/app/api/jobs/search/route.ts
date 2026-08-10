@@ -9,11 +9,12 @@ const skills = ["React", "TypeScript", "Next.js", "JavaScript", "Redux", "REST A
 function dummyJobs(body: Record<string, unknown>, page: number, pageSize: number) {
   const keyword = String(body.job_title ?? body.keyword ?? "React Developer").trim() || "Frontend Developer";
   const location = String(body.location ?? "Pune").trim() || "Pune";
+  const platform = String(body.platform ?? "naukri").trim() || "naukri";
   const workMode = String(body.work_mode ?? body.workMode ?? "any");
   const total = 57;
   const jobs = Array.from({ length: total }, (_, i) => ({
     id: `dummy-${i + 1}`,
-    platform: "naukri",
+    platform,
     job_id: `dummy-${100000 + i}`,
     title: `${keyword} ${i % 3 === 0 ? "Senior" : ""}`.trim(),
     company: companies[i % companies.length],
@@ -23,9 +24,9 @@ function dummyJobs(body: Record<string, unknown>, page: number, pageSize: number
     work_mode: workMode !== "any" ? workMode : i % 4 === 0 ? "Remote" : i % 3 === 0 ? "Hybrid" : "Work from office",
     easy_apply: Boolean(body.easy_apply ?? false),
     posted: `${(i % 7) + 1} day${i % 7 === 0 ? "" : "s"} ago`,
-    job_url: "https://www.naukri.com/",
+    job_url: platform === "linkedin" ? "https://www.linkedin.com/jobs/" : "https://www.naukri.com/",
     apply_url: "",
-    description: "Dummy job result used when the local Naukri service is unavailable.",
+    description: "Demo job result generated locally for UI testing. This result does not call the live job API.",
     company_logo: "",
     skills: [skills[i % skills.length], skills[(i + 1) % skills.length], skills[(i + 2) % skills.length]],
     status: "NEW",
@@ -62,6 +63,12 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const page = Math.max(1, Number(body.page) || 1);
   const pageSize = Math.min(20, Math.max(1, Number(body.pageSize) || 9));
+  const url = new URL(request.url);
+
+  if (url.searchParams.get("mode") === "dummy") {
+    return NextResponse.json(dummyJobs(body, page, pageSize));
+  }
+
   const upstream = process.env.JOBS_API_URL || "http://localhost:8000/api/v1/jobs/search";
 
   try {
@@ -78,7 +85,7 @@ export async function POST(request: Request) {
         easy_apply: Boolean(body.easy_apply ?? false),
       }),
       cache: "no-store",
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(300000),
     });
 
     if (!response.ok) throw new Error(`Upstream API returned ${response.status}`);
@@ -86,16 +93,20 @@ export async function POST(request: Request) {
     const rawJobs = Array.isArray(payload) ? payload : Array.isArray(payload.jobs) ? payload.jobs : [];
     const allJobs = rawJobs.map(normalizeJob);
     const start = (page - 1) * pageSize;
+
     return NextResponse.json({
       jobs: allJobs.slice(start, start + pageSize),
       total: allJobs.length,
       page,
       pageSize,
       totalPages: Math.max(1, Math.ceil(allJobs.length / pageSize)),
-      source: "naukri-api",
+      source: "live-api",
     });
   } catch (error) {
-    console.warn("Naukri API unavailable; using dummy data:", error instanceof Error ? error.message : error);
-    return NextResponse.json({ ...dummyJobs(body, page, pageSize), fallback: true });
+    console.error("Live jobs API failed:", error instanceof Error ? error.message : error);
+    return NextResponse.json(
+      { jobs: [], total: 0, page, pageSize, totalPages: 1, source: "live-api", error: "The live job API did not complete successfully." },
+      { status: 502 },
+    );
   }
 }
