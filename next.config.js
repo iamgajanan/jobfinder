@@ -1,8 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Allow the Next.js dev server to serve HMR/static resources when
-  // the app is opened from another device on the local network.
-  allowedDevOrigins: ["192.168.1.4", "localhost"],
+  // Next.js 16 dev resources are protected by origin checks. These are the
+  // LAN hostnames from which JobFinder is intentionally opened in development.
+  allowedDevOrigins: [
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0",
+    "192.168.1.4",
+    "192.168.1.5",
+  ],
 };
 
 module.exports = nextConfig;
