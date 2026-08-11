@@ -37,78 +37,109 @@ function dummyJobs(body: Record<string, unknown>, page: number, pageSize: number
 }
 
 function normalizeJob(job: ApiJob, index: number) {
+  const experience = job.experience as ApiJob | undefined;
+  const salary = job.salary as ApiJob | undefined;
   return {
     id: String(job.id ?? job.job_id ?? `job-${index}`),
-    platform: String(job.platform ?? job.source ?? "naukri"),
-    job_id: String(job.job_id ?? job.id ?? ""),
-    title: String(job.title ?? job.job_title ?? "Untitled job"),
-    company: String(job.company ?? job.company_name ?? "Company not disclosed"),
+    platform: String(job.source ?? "naukri"),
+    job_id: String(job.id ?? job.job_id ?? ""),
+    title: String(job.title ?? "Untitled job"),
+    company: String(job.company ?? "Company not disclosed"),
     location: String(job.location ?? "Location not disclosed"),
-    salary: String(job.salary ?? "Not disclosed"),
-    experience: String(job.experience ?? "Not disclosed"),
-    work_mode: String(job.work_mode ?? job.workMode ?? "Unknown"),
-    easy_apply: Boolean(job.easy_apply ?? false),
-    posted: String(job.posted ?? job.posted_within ?? job.posted_date ?? "Recently posted"),
-    job_url: String(job.job_url ?? job.url ?? ""),
-    apply_url: String(job.apply_url ?? ""),
+    salary: String(salary?.text ?? "Not disclosed"),
+    experience: String(experience?.text ?? "Not disclosed"),
+    work_mode: String(job.work_mode ?? "Unknown"),
+    easy_apply: false,
+    posted: String(job.posted_at ?? "Recently posted"),
+    job_url: String(job.job_url ?? ""),
+    apply_url: "",
     description: String(job.description ?? ""),
-    company_logo: String(job.company_logo ?? ""),
-    status: String(job.status ?? "NEW"),
+    company_logo: "",
+    status: "NEW",
     skills: Array.isArray(job.skills) ? job.skills.map(String) : [],
-    source: String(job.platform ?? job.source ?? "naukri"),
+    source: String(job.source ?? "naukri"),
   };
 }
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const page = Math.max(1, Number(body.page) || 1);
-  const pageSize = Math.min(20, Math.max(1, Number(body.pageSize) || 9));
+  const pageSize = Math.min(50, Math.max(1, Number(body.pageSize) || 9));
   const url = new URL(request.url);
 
   if (url.searchParams.get("mode") === "dummy") {
     return NextResponse.json(dummyJobs(body, page, pageSize));
   }
 
-  // The browser always calls this Next.js route on the same origin. Next.js
-  // proxies server-to-server to the backend, so the browser does not need
-  // CORS access to port 8004.
-  const upstream = process.env.JOBS_API_URL || "http://127.0.0.1:8004/api/v1/jobs/search";
+  // The browser calls this same-origin route. This route then calls the
+  // actual Naukri FastAPI service on port 8004 using its real GET contract:
+  // GET /v1/jobs/search?keyword=...&location=...&experience=...&freshness=...&work_mode=...&page=...&limit=...
+  const upstreamBase = process.env.JOBS_API_URL || "http://127.0.0.1:8004/v1/jobs/search";
+  const upstreamUrl = new URL(upstreamBase);
+
+  const keyword = String(body.job_title ?? body.keyword ?? "").trim();
+  if (!keyword) {
+    return NextResponse.json({ error: "job_title is required" }, { status: 400 });
+  }
+
+  upstreamUrl.searchParams.set("keyword", keyword);
+  const location = String(body.location ?? "").trim();
+  if (location) upstreamUrl.searchParams.set("location", location);
+
+  const experienceText = String(body.experience ?? "").trim();
+  const experienceMatch = experienceText.match(/\d+/);
+  if (experienceMatch) upstreamUrl.searchParams.set("experience", experienceMatch[0]);
+
+  const freshnessMap: Record<string, string> = {
+    day: "1",
+    "3 days": "3",
+    week: "7",
+    "15 days": "15",
+    month: "30",
+  };
+  const freshness = freshnessMap[String(body.posted_within ?? "day")] ?? String(body.freshness ?? "");
+  if (freshness) upstreamUrl.searchParams.set("freshness", freshness);
+
+  const workMode = String(body.work_mode ?? body.workMode ?? "").toLowerCase();
+  if (workMode === "remote" || workMode === "hybrid" || workMode === "onsite") {
+    upstreamUrl.searchParams.set("work_mode", workMode);
+  }
+
+  upstreamUrl.searchParams.set("page", String(page));
+  upstreamUrl.searchParams.set("limit", String(pageSize));
 
   try {
-    const response = await fetch(upstream, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({
-        platform: body.platform ?? "naukri",
-        job_title: body.job_title ?? body.keyword ?? "react",
-        location: body.location ?? "pune",
-        experience: body.experience ?? "5 years",
-        work_mode: body.work_mode ?? body.workMode ?? "any",
-        posted_within: body.posted_within ?? body.postedWithin ?? "day",
-        easy_apply: Boolean(body.easy_apply ?? false),
-      }),
+    const response = await fetch(upstreamUrl.toString(), {
+      method: "GET",
+      headers: { Accept: "application/json" },
       cache: "no-store",
       signal: AbortSignal.timeout(300000),
     });
 
-    if (!response.ok) throw new Error(`Upstream API returned ${response.status}`);
-    const payload = (await response.json()) as { jobs?: ApiJob[] } | ApiJob[];
-    const rawJobs = Array.isArray(payload) ? payload : Array.isArray(payload.jobs) ? payload.jobs : [];
-    const allJobs = rawJobs.map(normalizeJob);
-    const start = (page - 1) * pageSize;
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: payload?.detail?.message ?? payload?.detail ?? `Naukri API returned ${response.status}` },
+        { status: response.status >= 500 ? 502 : response.status },
+      );
+    }
+
+    const rawJobs = Array.isArray(payload?.jobs) ? payload.jobs : [];
+    const jobs = rawJobs.map(normalizeJob);
+    const total = Number(payload?.total_results ?? jobs.length);
 
     return NextResponse.json({
-      jobs: allJobs.slice(start, start + pageSize),
-      total: allJobs.length,
-      page,
-      pageSize,
-      totalPages: Math.max(1, Math.ceil(allJobs.length / pageSize)),
+      jobs,
+      total,
+      page: Number(payload?.page ?? page),
+      pageSize: Number(payload?.limit ?? pageSize),
+      totalPages: Math.max(1, Math.ceil(total / Number(payload?.limit ?? pageSize))),
       source: "live-api",
     });
   } catch (error) {
-    console.error("Live jobs API failed:", error instanceof Error ? error.message : error);
+    console.error("Live Naukri API failed:", error instanceof Error ? error.message : error);
     return NextResponse.json(
-      { jobs: [], total: 0, page, pageSize, totalPages: 1, source: "live-api", error: "The live job API did not complete successfully." },
+      { error: "Unable to connect to the Naukri API on port 8004." },
       { status: 502 },
     );
   }
