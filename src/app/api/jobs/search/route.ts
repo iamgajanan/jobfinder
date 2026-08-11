@@ -69,7 +69,10 @@ export async function POST(request: Request) {
     return NextResponse.json(dummyJobs(body, page, pageSize));
   }
 
-  const upstream = process.env.JOBS_API_URL || "http://localhost:8000/api/v1/jobs/search";
+  // The browser always calls this Next.js route on the same origin. Next.js
+  // proxies server-to-server to the backend, so the browser does not need
+  // CORS access to port 8004.
+  const upstream = process.env.JOBS_API_URL || "http://127.0.0.1:8004/api/v1/jobs/search";
 
   try {
     const response = await fetch(upstream, {
