@@ -29,7 +29,7 @@ export default function Signup() {
       saveAuthResponse(response);
 
       if (response.email_confirmation_required || !response.session) {
-        router.replace(`/login?registered=1&email=${encodeURIComponent(email)}`);
+        router.replace(`/confirm-email?email=${encodeURIComponent(email)}`);
       } else {
         router.replace("/");
       }
