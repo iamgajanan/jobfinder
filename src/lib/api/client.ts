@@ -4,12 +4,16 @@ import type {
   AuthResponse,
   CreateOrderRequest,
   CreateOrderResponse,
+  CreateSavedSearchRequest,
   CurrentUser,
   JobSearchRequest,
   JobSearchResponse,
   PaymentHistoryResponse,
   PaymentResult,
   PlansResponse,
+  SavedSearch,
+  SavedSearchesResponse,
+  UpdateSavedSearchRequest,
   VerifyPaymentRequest,
 } from "./types";
 
@@ -96,6 +100,17 @@ export const api = {
     request<PaymentResult>("/payments/verify", { method: "POST", body: JSON.stringify(payload) }),
 
   paymentHistory: () => request<PaymentHistoryResponse>("/payments/history"),
+
+  savedSearches: () => request<SavedSearchesResponse>("/saved-searches"),
+
+  createSavedSearch: (payload: CreateSavedSearchRequest) =>
+    request<SavedSearch>("/saved-searches", { method: "POST", body: JSON.stringify(payload) }),
+
+  updateSavedSearch: (id: string, payload: UpdateSavedSearchRequest) =>
+    request<SavedSearch>(`/saved-searches/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+
+  deleteSavedSearch: (id: string) =>
+    request<void>(`/saved-searches/${id}`, { method: "DELETE" }),
 };
 
 export function saveAuthResponse(response: AuthResponse) {
