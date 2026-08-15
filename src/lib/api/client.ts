@@ -37,7 +37,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
 async function request<T>(path: string, init: RequestInit = {}, retryOnUnauthorized = true): Promise<T> {
   const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json");
+  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
   const session = getStoredSession();
   if (session?.access_token) headers.set("Authorization", `Bearer ${session.access_token}`);
@@ -99,5 +99,5 @@ export const api = {
 };
 
 export function saveAuthResponse(response: AuthResponse) {
-  setStoredSession(response.session);
+  setStoredSession(response.session, response.user);
 }
