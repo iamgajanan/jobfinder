@@ -130,3 +130,23 @@ export type PaymentHistoryItem = {
 export type PaymentHistoryResponse = {
   payments: PaymentHistoryItem[];
 };
+
+export type SavedSearch = {
+  id: string;
+  name: string;
+  platform: "linkedin" | "naukri";
+  job_title: string;
+  location: string;
+  experience: string | null;
+  work_mode: "remote" | "onsite" | "hybrid" | "any" | null;
+  posted_within: string | null;
+  easy_apply: boolean;
+  alert_enabled: boolean;
+  alert_frequency: "daily" | "weekly" | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateSavedSearchRequest = Omit<SavedSearch, "id" | "created_at" | "updated_at">;
+export type UpdateSavedSearchRequest = Partial<CreateSavedSearchRequest>;
+export type SavedSearchesResponse = { saved_searches: SavedSearch[] };
