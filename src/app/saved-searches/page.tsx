@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import SavedSearches from "@/components/SavedSearches";
+import TestAlertPanel from "@/components/TestAlertPanel";
 import type { SavedSearch } from "@/lib/api/types";
 import { api } from "@/lib/api/client";
 
@@ -19,16 +20,15 @@ export default function SavedSearchesPage() {
       easy_apply: savedSearch.easy_apply,
     });
 
-    // Keep the implementation backend-driven. The main dashboard owns the
-    // result presentation, so this phase exposes the reusable search flow
-    // without duplicating the dashboard search-result UI.
-    sessionStorage.setItem("jobfinder_saved_search_results", JSON.stringify(result.jobs));
+    // Keep results available when mobile Safari evicts sessionStorage while the tab is backgrounded.
+    localStorage.setItem("jobfinder_saved_search_results", JSON.stringify(result.jobs));
     router.push("/");
   }
 
   return (
     <main className="min-h-screen bg-[var(--bg)] p-4 text-[var(--fg)] md:p-8">
       <div className="mx-auto max-w-6xl">
+        <TestAlertPanel />
         <SavedSearches onRun={runSavedSearch} />
       </div>
     </main>
