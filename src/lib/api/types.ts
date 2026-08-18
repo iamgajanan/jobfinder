@@ -126,3 +126,15 @@ export type SavedSearchAlertJob = {
   first_seen_at: string;
   last_seen_at: string;
 };
+
+export type ViewedJob = {
+  id: string;
+  platform: "linkedin" | "naukri";
+  job_id: string;
+  job_data: Job;
+  viewed_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ViewedJobsResponse = { viewed_jobs: ViewedJob[] };
