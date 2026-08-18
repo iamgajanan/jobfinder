@@ -37,6 +37,30 @@ function addViewedBadge(card: Element) {
   right.appendChild(badge);
 }
 
+function jobFromCard(card: Element): Job | null {
+  const link = card.querySelector("a[href]") as HTMLAnchorElement | null;
+  if (!link) return null;
+  const platform = inferPlatform(link.href);
+  if (!platform) return null;
+  return {
+    id: null,
+    platform,
+    job_id: inferJobId(link.href),
+    title: textFrom(card, "h3") || textFrom(card, "h2") || "Job listing",
+    company: textFrom(card, "h3 + p") || textFrom(card, "h2 + p") || "Unknown company",
+    location: textFrom(card, ".mt-4 .flex") || "Location not disclosed",
+    salary: null,
+    experience: null,
+    work_mode: null,
+    easy_apply: false,
+    job_url: link.href,
+    apply_url: link.href,
+    description: null,
+    company_logo: null,
+    status: "active",
+  };
+}
+
 export default function ViewedJobClickTracker() {
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
@@ -48,30 +72,10 @@ export default function ViewedJobClickTracker() {
         return;
       }
 
-      const link = target?.closest("a[href]") as HTMLAnchorElement | null;
-      if (!link || link.target !== "_blank") return;
-      const platform = inferPlatform(link.href);
-      if (!platform) return;
-      const card = link.closest("article");
+      const card = target?.closest("article");
       if (!card) return;
-
-      const job: Job = {
-        id: null,
-        platform,
-        job_id: inferJobId(link.href),
-        title: textFrom(card, "h3") || textFrom(card, "h2") || "Job listing",
-        company: textFrom(card, "h3 + p") || textFrom(card, "h2 + p") || "Unknown company",
-        location: textFrom(card, ".mt-4 .flex") || "Location not disclosed",
-        salary: null,
-        experience: null,
-        work_mode: null,
-        easy_apply: false,
-        job_url: link.href,
-        apply_url: link.href,
-        description: null,
-        company_logo: null,
-        status: "active",
-      };
+      const job = jobFromCard(card);
+      if (!job) return;
 
       rememberViewedJob(job);
       addViewedBadge(card);
