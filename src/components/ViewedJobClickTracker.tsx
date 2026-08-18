@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { markViewed } from "@/lib/api/viewed";
 import type { Job } from "@/lib/api/types";
-import { rememberViewedJob } from "@/lib/viewedJobsState";
+import { readViewedJobKeys, rememberViewedJob, viewedJobKey } from "@/lib/viewedJobsState";
 
 function inferPlatform(url: string): "linkedin" | "naukri" | null {
   const value = url.toLowerCase();
@@ -77,9 +77,11 @@ export default function ViewedJobClickTracker() {
       const job = jobFromCard(card);
       if (!job) return;
 
+      const key = viewedJobKey(job);
+      const alreadyViewed = readViewedJobKeys().has(key);
       rememberViewedJob(job);
       addViewedBadge(card);
-      void markViewed(job).catch(() => {});
+      if (!alreadyViewed) void markViewed(job).catch(() => {});
     };
 
     document.addEventListener("click", onClick, true);
