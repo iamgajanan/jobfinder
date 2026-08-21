@@ -100,6 +100,7 @@ export type SavedSearchesResponse = { saved_searches: SavedSearch[] };
 
 export type AlertRun = {
   id: string;
+  saved_search_name: string | null;
   scheduled_for: string;
   status: "queued" | "running" | "completed" | "failed" | "skipped";
   created_at: string;

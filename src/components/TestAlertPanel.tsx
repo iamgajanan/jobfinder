@@ -6,10 +6,16 @@ import { ApiError, api } from "@/lib/api/client";
 import type { AlertRun, SavedSearch, SavedSearchAlertJob } from "@/lib/api/types";
 
 const COOLDOWN_MS = 10 * 60 * 1000;
+const ALERT_POLL_INTERVAL_MS = 1000;
+const ALERT_POLL_ATTEMPTS = 20;
 
 function formatDate(value: string | null) {
   if (!value) return "—";
   return new Date(value).toLocaleString();
+}
+
+function isTerminal(run: AlertRun | undefined) {
+  return Boolean(run && ["completed", "failed", "skipped"].includes(run.status));
 }
 
 export default function TestAlertPanel() {
@@ -28,7 +34,7 @@ export default function TestAlertPanel() {
   const [jobs, setJobs] = useState<SavedSearchAlertJob[]>([]);
 
   async function loadHistory(id: string) {
-    if (!id) return;
+    if (!id) return null;
     setHistoryLoading(true);
     setHistoryError("");
     try {
@@ -37,11 +43,25 @@ export default function TestAlertPanel() {
       setLastRunAt(status.last_run_at);
       setRuns(status.recent_runs);
       setJobs(alertJobs);
+      return status;
     } catch (err) {
       setHistoryError(err instanceof ApiError ? err.message : "Unable to load alert history.");
+      return null;
     } finally {
       setHistoryLoading(false);
     }
+  }
+
+  async function waitForRun(runId: string, id: string) {
+    for (let attempt = 0; attempt < ALERT_POLL_ATTEMPTS; attempt += 1) {
+      const status = await loadHistory(id);
+      const run = status?.recent_runs.find((item) => item.id === runId);
+      if (isTerminal(run)) return run;
+      if (attempt < ALERT_POLL_ATTEMPTS - 1) {
+        await new Promise((resolve) => setTimeout(resolve, ALERT_POLL_INTERVAL_MS));
+      }
+    }
+    return undefined;
   }
 
   useEffect(() => {
@@ -79,9 +99,20 @@ export default function TestAlertPanel() {
     setMessage("");
     try {
       const response = await api.testSavedSearchAlert(selectedId);
+      const runId = typeof response.run?.id === "string" ? response.run.id : "";
       setMessage(response.message);
       setCooldownUntil(Date.now() + COOLDOWN_MS);
-      await loadHistory(selectedId);
+
+      if (runId) {
+        const completedRun = await waitForRun(runId, selectedId);
+        if (completedRun?.status === "completed") {
+          setMessage(`Alert completed for ${completedRun.saved_search_name || "saved search"}: ${completedRun.new_jobs_count} new job${completedRun.new_jobs_count === 1 ? "" : "s"}.`);
+        } else if (completedRun?.status === "failed") {
+          setError(completedRun.error_message || "The alert run failed.");
+        }
+      } else {
+        await loadHistory(selectedId);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to queue the test alert.");
     } finally {
@@ -102,7 +133,7 @@ export default function TestAlertPanel() {
           </select>
           <button onClick={testAlert} disabled={loading || sending || !selectedId || items.length === 0} className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
             {sending && <LoaderCircle size={15} className="animate-spin" />}
-            {sending ? "Queuing..." : "Test alert now"}
+            {sending ? "Running alert..." : "Test alert now"}
           </button>
         </div>
       </div>
@@ -123,9 +154,10 @@ export default function TestAlertPanel() {
         {!historyLoading && !historyError && (
           <>
             <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[620px] text-left text-xs">
+              <table className="w-full min-w-[760px] text-left text-xs">
                 <thead className="text-[var(--muted)]">
                   <tr>
+                    <th className="px-3 py-2 font-medium">Saved search</th>
                     <th className="px-3 py-2 font-medium">Scheduled</th>
                     <th className="px-3 py-2 font-medium">Status</th>
                     <th className="px-3 py-2 font-medium">New jobs</th>
@@ -135,12 +167,15 @@ export default function TestAlertPanel() {
                 </thead>
                 <tbody>
                   {runs.length === 0 ? (
-                    <tr><td colSpan={5} className="px-3 py-4 text-center text-[var(--muted)]">No alert runs yet.</td></tr>
+                    <tr><td colSpan={6} className="px-3 py-4 text-center text-[var(--muted)]">No alert runs yet.</td></tr>
                   ) : runs.slice(0, 10).map((run) => (
                     <tr key={run.id} className="border-t border-[var(--border)]">
+                      <td className="px-3 py-2 font-medium">{run.saved_search_name || "—"}</td>
                       <td className="px-3 py-2">{formatDate(run.scheduled_for)}</td>
                       <td className="px-3 py-2 font-medium capitalize">{run.status}</td>
-                      <td className="px-3 py-2">{run.new_jobs_count}</td>
+                      <td className="px-3 py-2 font-semibold">
+                        {run.status === "queued" || run.status === "running" ? "—" : run.new_jobs_count}
+                      </td>
                       <td className="px-3 py-2">{formatDate(run.completed_at)}</td>
                       <td className="max-w-xs truncate px-3 py-2 text-red-500">{run.error_message || "—"}</td>
                     </tr>
