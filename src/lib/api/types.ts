@@ -109,6 +109,8 @@ export type AlertRun = {
   new_jobs_count: number;
   result_summary: Record<string, unknown> | null;
   error_message: string | null;
+  email_status: "not_sent" | "queued" | "sent" | "failed";
+  email_error: string | null;
 };
 
 export type SavedSearchAlertStatus = {
