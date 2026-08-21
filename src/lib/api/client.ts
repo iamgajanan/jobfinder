@@ -1,5 +1,5 @@
 import { clearStoredSession, getStoredSession, setStoredSession } from "../auth/storage";
-import type { AccountResponse, AlertRun, AuthResponse, CreateOrderRequest, CreateOrderResponse, CreateSavedSearchRequest, CurrentUser, JobSearchRequest, JobSearchResponse, PaymentHistoryResponse, PaymentResult, PlansResponse, SavedSearch, SavedSearchAlertJob, SavedSearchAlertStatus, SavedSearchesResponse, UpdateSavedSearchRequest, VerifyPaymentRequest } from "./types";
+import type { AccountResponse, AuthResponse, CreateOrderRequest, CreateOrderResponse, CreateSavedSearchRequest, CurrentUser, JobSearchRequest, JobSearchResponse, PaymentHistoryResponse, PaymentResult, PlansResponse, SavedSearch, SavedSearchAlertJob, SavedSearchAlertOverview, SavedSearchAlertStatus, SavedSearchesResponse, UpdateSavedSearchRequest, VerifyPaymentRequest } from "./types";
 
 type ApiErrorBody = { detail?: string | { message?: string } };
 export class ApiError extends Error { constructor(public readonly status:number,message:string){super(message);this.name="ApiError";} }
@@ -36,5 +36,6 @@ export const api={
  testSavedSearchAlert:(id:string)=>request<{message:string;run:Record<string,unknown>}>(`/saved-searches/${id}/alert-test`,{method:"POST"}),
  alertStatus:(id:string)=>request<SavedSearchAlertStatus>(`/saved-searches/${id}/alert-status`),
  alertJobs:(id:string,limit=20)=>request<SavedSearchAlertJob[]>(`/saved-searches/${id}/alert-jobs?limit=${limit}`),
+ alertOverview:(id:string,limit=10)=>request<SavedSearchAlertOverview>(`/saved-searches/${id}/alert-overview?limit=${limit}`),
 };
 export function saveAuthResponse(response:AuthResponse){setStoredSession(response.session,response.user)}
