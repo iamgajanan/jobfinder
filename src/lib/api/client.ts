@@ -18,12 +18,26 @@ function getSavedSearches(){
   return savedSearchesInflight;
 }
 
+// Keep the last successful account response available for secondary refreshes.
+// A transient account refresh must never erase a successful search result.
+let accountCache: AccountResponse | null = null;
+async function getAccount(){
+  try {
+    const data = await request<AccountResponse>("/account/me");
+    accountCache = data;
+    return data;
+  } catch (error) {
+    if (accountCache) return accountCache;
+    throw error;
+  }
+}
+
 export const api={
  signup:(payload:{email:string;password:string;full_name?:string})=>request<AuthResponse>("/auth/signup",{method:"POST",body:JSON.stringify(payload)}),
  login:(payload:{email:string;password:string})=>request<AuthResponse>("/auth/login",{method:"POST",body:JSON.stringify(payload)}),
  logout:()=>request<void>("/auth/logout",{method:"POST"}),
  me:()=>request<CurrentUser>("/auth/me"),
- account:()=>request<AccountResponse>("/account/me"),
+ account:getAccount,
  searchJobs:(payload:JobSearchRequest)=>request<JobSearchResponse>("/jobs/search",{method:"POST",body:JSON.stringify(payload)}),
  plans:()=>request<PlansResponse>("/plans"),
  createOrder:(payload:CreateOrderRequest)=>request<CreateOrderResponse>("/payments/orders",{method:"POST",body:JSON.stringify(payload)}),
@@ -36,6 +50,7 @@ export const api={
  testSavedSearchAlert:(id:string)=>request<{message:string;run:Record<string,unknown>}>(`/saved-searches/${id}/alert-test`,{method:"POST"}),
  alertStatus:(id:string)=>request<SavedSearchAlertStatus>(`/saved-searches/${id}/alert-status`),
  alertJobs:(id:string,limit=20)=>request<SavedSearchAlertJob[]>(`/saved-searches/${id}/alert-jobs?limit=${limit}`),
- alertOverview:(id:string,limit=10)=>request<SavedSearchAlertOverview>(`/saved-searches/${id}/alert-overview?limit=${limit}`),
+ alertOverview:(id:string,limit=20)=>request<SavedSearchAlertOverview>(`/saved-searches/${id}/alert-overview?limit=${limit}`),
+ passwordReset:(payload:{email:string;redirect_to?:string})=>request<{message:string}>("/auth/password-reset",{method:"POST",body:JSON.stringify(payload)}),
 };
 export function saveAuthResponse(response:AuthResponse){setStoredSession(response.session,response.user)}

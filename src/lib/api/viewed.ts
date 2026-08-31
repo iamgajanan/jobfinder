@@ -7,6 +7,7 @@ type ViewedResponse = { viewed_jobs:ViewedJob[] };
 const CACHE_TTL_MS = 10_000;
 const cache = new Map<string,{data:ViewedResponse;expiresAt:number}>();
 const inflight = new Map<string,Promise<ViewedResponse>>();
+const markInflight = new Map<string,Promise<ViewedJob>>();
 
 async function request<T>(path:string, init:RequestInit={}):Promise<T>{
   const session=getStoredSession();
@@ -21,11 +22,22 @@ async function request<T>(path:string, init:RequestInit={}):Promise<T>{
 }
 
 function cacheKey(limit:number,offset:number){return `${limit}:${offset}`;}
+function markKey(job:Job){return `${job.platform}:${job.job_id}`;}
 
-export async function markViewed(job:Job){
-  const result=await request<ViewedJob>("/jobs/viewed",{method:"POST",body:JSON.stringify(job)});
-  cache.clear();
-  return result;
+export function markViewed(job:Job){
+  const key=markKey(job);
+  const existing=markInflight.get(key);
+  if(existing) return existing;
+
+  const promise=request<ViewedJob>("/jobs/viewed",{method:"POST",body:JSON.stringify(job)})
+    .then(result=>{
+      cache.clear();
+      return result;
+    })
+    .finally(()=>markInflight.delete(key));
+
+  markInflight.set(key,promise);
+  return promise;
 }
 
 export function listViewed(limit=50,offset=0){
