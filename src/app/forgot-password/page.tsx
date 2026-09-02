@@ -8,65 +8,7 @@ import { ApiError, api } from "@/lib/api/client";
 
 export default function ForgotPassword() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [error, setError] = useState("");
-  const [sent, setSent] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      await api.passwordReset({
-        email: email.trim(),
-        redirect_to: `${window.location.origin}/reset-password`,
-      });
-      setSent(true);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to send reset instructions. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-[var(--bg)] px-5 py-10 text-[var(--fg)]">
-      <div className="w-full max-w-md">
-        <button type="button" onClick={() => router.push("/login")} className="mb-8 flex items-center gap-2 text-sm text-[var(--muted)] hover:text-[var(--fg)]">
-          <ArrowLeft className="h-4 w-4" /> Back to sign in
-        </button>
-
-        <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-xl bg-black text-white"><BriefcaseBusiness /></div>
-          <h1 className="text-3xl font-bold">Reset your password</h1>
-          <p className="mt-2 text-sm text-[var(--muted)]">Enter your email and we&apos;ll send you instructions to create a new password.</p>
-        </div>
-
-        <div className="card p-6">
-          {sent ? (
-            <div className="text-center">
-              <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-green-50 text-green-600"><MailCheck /></div>
-              <h2 className="text-lg font-semibold">Check your email</h2>
-              <p className="mt-2 text-sm text-[var(--muted)]">If an account exists for <strong>{email}</strong>, password reset instructions have been sent.</p>
-              <Link href="/login" className="mt-6 inline-block text-sm font-semibold text-blue-600 hover:text-blue-700">Return to sign in</Link>
-            </div>
-          ) : (
-            <form onSubmit={submit}>
-              <label htmlFor="reset-email" className="text-sm font-medium">
-                Email Address
-                <input id="reset-email" className="input mt-2" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" required />
-              </label>
-              {error && <p className="mt-3 text-sm text-red-500" role="alert">{error}</p>}
-              <button disabled={loading} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
-                {loading && <LoaderCircle className="h-4 w-4 animate-spin" />}
-                {loading ? "Sending..." : "Send reset instructions"}
-              </button>
-              <p className="mt-5 text-center text-sm text-[var(--muted)]"><Link href="/login" className="font-semibold text-blue-600">Back to sign in</Link></p>
-            </form>
-          )}
-        </div>
-      </div>
-    </main>
-  );
+  const [email, setEmail] = useState(""); const [error, setError] = useState(""); const [sent, setSent] = useState(false); const [loading, setLoading] = useState(false);
+  async function submit(e: FormEvent) { e.preventDefault(); setError(""); setLoading(true); try { await api.passwordReset({ email: email.trim(), redirect_to: `${window.location.origin}/reset-password` }); setSent(true); } catch (err) { setError(err instanceof ApiError ? err.message : "Unable to send reset instructions. Please try again."); } finally { setLoading(false); } }
+  return <main className="min-h-screen bg-white px-5 py-10 text-slate-950"><div className="mx-auto w-full max-w-md pt-8"><button type="button" onClick={() => router.replace("/login")} className="mb-8 flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-950"><ArrowLeft className="h-4 w-4"/>Back to sign in</button><div className="mb-8"><div className="mb-5 grid h-11 w-11 place-items-center rounded-xl bg-black text-white"><BriefcaseBusiness/></div><h1 className="text-3xl font-bold tracking-tight">Forgot your password?</h1><p className="mt-2 text-slate-600">Enter your email and we&apos;ll send you a secure link to choose a new password.</p></div><div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">{sent ? <div className="text-center"><div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-emerald-50 text-emerald-600"><MailCheck/></div><h2 className="text-lg font-semibold">Check your email</h2><p className="mt-2 text-sm leading-6 text-slate-600">If an account exists for <strong>{email}</strong>, password reset instructions have been sent.</p><Link href="/login" className="mt-6 inline-block text-sm font-semibold text-indigo-600 hover:text-indigo-700">Return to sign in</Link></div> : <form onSubmit={submit}><label htmlFor="reset-email" className="block text-sm font-semibold text-slate-800">Email address<input id="reset-email" className="mt-2 h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-slate-950 outline-none placeholder:text-slate-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" type="email" value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" required/></label>{error&&<p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</p>}<button disabled={loading} className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-black px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">{loading&&<LoaderCircle className="h-4 w-4 animate-spin"/>}{loading?"Sending...":"Send reset link"}</button><p className="mt-5 text-center text-sm text-slate-600"><Link href="/login" className="font-semibold text-indigo-600 hover:text-indigo-700">Back to sign in</Link></p></form>}</div></div></main>;
 }
