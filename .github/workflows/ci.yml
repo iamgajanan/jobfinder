@@ -38,3 +38,6 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Production smoke checks
+        run: node scripts/smoke-check.mjs
